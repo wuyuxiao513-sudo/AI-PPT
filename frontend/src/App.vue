@@ -9,7 +9,7 @@ const project=ref<Project|null>(null),history=ref<Project[]>([]),busy=ref(false)
 const stage=computed(()=>!project.value?'input':project.value.status==='OUTLINE_READY'?'outline':project.value.status==='GENERATING'?'generating':'result')
 const inputReady=computed(()=>mode.value==='topic'?title.value.trim():mode.value==='text'?text.value.trim():!!file.value)
 
-async function request<T>(url:string,options?:RequestInit):Promise<T>{const res=await fetch(url,options);if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.message||'请求失败')}if(res.status===204)return undefined as T;return res.json()}
+async function request<T>(url:string,options?:RequestInit):Promise<T>{const res=await fetch(url,options);if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.message||'请求失败')}const body=await res.text();return body.trim()?JSON.parse(body) as T:undefined as T}
 async function loadHistory(){history.value=await request<Project[]>('/api/presentations').catch(()=>[])}
 function chooseFile(e:Event){file.value=(e.target as HTMLInputElement).files?.[0]||null}
 async function create(){if(!inputReady.value)return;busy.value=true;error.value='';try{const data=new FormData();if(title.value)data.append('title',title.value);if(mode.value==='text')data.append('text',text.value);if(mode.value==='file'&&file.value)data.append('file',file.value);data.append('slideCount',String(slideCount.value));project.value=await request('/api/presentations',{method:'POST',body:data});activeSlide.value=0;loadHistory()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}

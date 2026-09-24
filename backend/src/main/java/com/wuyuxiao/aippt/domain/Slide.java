@@ -13,6 +13,7 @@ public class Slide {
     @Lob @Column(columnDefinition="TEXT") private String bullets;
     @Lob @Column(columnDefinition="TEXT") private String speakerNotes;
     private String layout = "content";
+    @Column(name = "is_generated")
     private boolean generated;
     public Long getId(){return id;} public int getPosition(){return position;} public void setPosition(int v){position=v;}
     public String getTitle(){return title;} public void setTitle(String v){title=v;}
@@ -23,4 +24,3 @@ public class Slide {
     public boolean isGenerated(){return generated;} public void setGenerated(boolean v){generated=v;}
     public void setPresentation(Presentation v){presentation=v;}
 }
-
