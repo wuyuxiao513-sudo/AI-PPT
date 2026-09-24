@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ai_ppt?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:aippt}
+    password: ${DB_PASSWORD:aippt_password}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 30MB
+app:
+  ai:
+    base-url: ${AI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:qwen-plus}
+    temperature: ${AI_TEMPERATURE:0.5}
+  generation:
+    parallelism: ${GENERATION_PARALLELISM:4}
+
