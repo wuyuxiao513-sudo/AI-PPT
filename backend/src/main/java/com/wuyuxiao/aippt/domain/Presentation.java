@@ -17,7 +17,7 @@ public class Presentation {
     private LocalDateTime createdAt = LocalDateTime.now();
     @JsonManagedReference @OneToMany(mappedBy="presentation", cascade=CascadeType.ALL, orphanRemoval=true, fetch=FetchType.EAGER)
     @OrderBy("position asc") private List<Slide> slides = new ArrayList<>();
-    public enum Status { OUTLINE_READY, GENERATING, COMPLETED, FAILED }
+    public enum Status { OUTLINE_READY, GENERATING, COMPLETED, FAILED, CANCELLED }
     public void replaceSlides(List<Slide> items) { slides.clear(); items.forEach(this::addSlide); }
     public void addSlide(Slide slide) { slide.setPresentation(this); slides.add(slide); }
     public String getId(){return id;} public String getTitle(){return title;} public void setTitle(String v){title=v;}
@@ -28,4 +28,3 @@ public class Presentation {
     public String getErrorMessage(){return errorMessage;} public void setErrorMessage(String v){errorMessage=v;}
     public LocalDateTime getCreatedAt(){return createdAt;} public List<Slide> getSlides(){return slides;}
 }
-

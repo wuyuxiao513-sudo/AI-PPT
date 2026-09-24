@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-type Status='OUTLINE_READY'|'GENERATING'|'COMPLETED'|'FAILED'
+type Status='OUTLINE_READY'|'GENERATING'|'COMPLETED'|'FAILED'|'CANCELLED'
 interface Slide {id?:number;position:number;title:string;subtitle:string;bullets?:string;layout:string;generated:boolean}
 interface Project {id:string;title:string;status:Status;progress:number;theme:string;errorMessage?:string;slides:Slide[];createdAt:string}
 const mode=ref<'topic'|'text'|'file'>('topic'),title=ref(''),text=ref(''),slideCount=ref(8),file=ref<File|null>(null)
-const project=ref<Project|null>(null),history=ref<Project[]>([]),busy=ref(false),error=ref(''),activeSlide=ref(0)
+const project=ref<Project|null>(null),history=ref<Project[]>([]),busy=ref(false),error=ref(''),activeSlide=ref(0),deletingId=ref('')
+let pollVersion=0
+const statusLabel=(status:Status)=>({OUTLINE_READY:'草稿',GENERATING:'生成中',COMPLETED:'已完成',FAILED:'生成失败',CANCELLED:'已停止'}[status])
 const stage=computed(()=>!project.value?'input':project.value.status==='OUTLINE_READY'?'outline':project.value.status==='GENERATING'?'generating':'result')
 const inputReady=computed(()=>mode.value==='topic'?title.value.trim():mode.value==='text'?text.value.trim():!!file.value)
 
@@ -15,10 +17,12 @@ function chooseFile(e:Event){file.value=(e.target as HTMLInputElement).files?.[0
 async function create(){if(!inputReady.value)return;busy.value=true;error.value='';try{const data=new FormData();if(title.value)data.append('title',title.value);if(mode.value==='text')data.append('text',text.value);if(mode.value==='file'&&file.value)data.append('file',file.value);data.append('slideCount',String(slideCount.value));project.value=await request('/api/presentations',{method:'POST',body:data});activeSlide.value=0;loadHistory()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
 function addSlide(){if(!project.value)return;project.value.slides.push({position:project.value.slides.length+1,title:'新页面',subtitle:'填写本页意图',layout:'content',generated:false})}
 function removeSlide(index:number){if(!project.value||project.value.slides.length<=3)return;project.value.slides.splice(index,1);project.value.slides.forEach((s,i)=>s.position=i+1)}
-async function generate(){if(!project.value)return;busy.value=true;error.value='';try{const p=project.value;const updated=await request<Project>(`/api/presentations/${p.id}/outline`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:p.title,theme:p.theme,slides:p.slides.map(s=>({title:s.title,subtitle:s.subtitle,layout:s.layout}))})});await request(`/api/presentations/${p.id}/generate`,{method:'POST'});updated.status='GENERATING';project.value=updated;poll()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
-async function poll(){if(!project.value)return;const current=await request<Project>(`/api/presentations/${project.value.id}`);project.value=current;if(current.status==='GENERATING')setTimeout(poll,1000);else loadHistory()}
-function openProject(p:Project){project.value=p;activeSlide.value=0;if(p.status==='GENERATING')poll()}
-function reset(){project.value=null;title.value='';text.value='';file.value=null;error.value=''}
+async function generate(){if(!project.value)return;busy.value=true;error.value='';try{const p=project.value;const updated=await request<Project>(`/api/presentations/${p.id}/outline`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:p.title,theme:p.theme,slides:p.slides.map(s=>({title:s.title,subtitle:s.subtitle,layout:s.layout}))})});await request(`/api/presentations/${p.id}/generate`,{method:'POST'});updated.status='GENERATING';project.value=updated;const version=++pollVersion;poll(p.id,version);loadHistory()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
+async function poll(id:string,version:number){try{const current=await request<Project>(`/api/presentations/${id}`);if(version!==pollVersion||project.value?.id!==id)return;project.value=current;if(current.status==='GENERATING')setTimeout(()=>poll(id,version),1000);else loadHistory()}catch(e){if(version!==pollVersion)return;error.value=(e as Error).message;setTimeout(()=>poll(id,version),2000)}}
+async function cancelGeneration(){if(!project.value||busy.value)return;const id=project.value.id;busy.value=true;error.value='';++pollVersion;try{project.value=await request<Project>(`/api/presentations/${id}/cancel`,{method:'POST'});await loadHistory()}catch(e){error.value=(e as Error).message;if(project.value?.id===id&&project.value.status==='GENERATING'){const version=++pollVersion;poll(id,version)}}finally{busy.value=false}}
+async function deleteProject(item:Project){if(deletingId.value||!window.confirm(`确定删除「${item.title}」吗？此操作无法撤销。`))return;deletingId.value=item.id;const wasCurrent=project.value?.id===item.id;if(wasCurrent)++pollVersion;try{await request<void>(`/api/presentations/${item.id}`,{method:'DELETE'});if(wasCurrent)reset();await loadHistory()}catch(e){error.value=(e as Error).message;if(wasCurrent&&project.value?.status==='GENERATING'){const version=++pollVersion;poll(item.id,version)}}finally{deletingId.value=''}}
+function openProject(p:Project){++pollVersion;project.value=p;activeSlide.value=0;if(p.status==='GENERATING')poll(p.id,pollVersion)}
+function reset(){++pollVersion;project.value=null;title.value='';text.value='';file.value=null;error.value=''}
 function download(){if(project.value)window.location.href=`/api/presentations/${project.value.id}/download`}
 onMounted(loadHistory)
 </script>
@@ -29,9 +33,12 @@ onMounted(loadHistory)
       <div class="brand"><span class="brand-mark">P</span><div><b>PresentMind</b><small>AI STORY STUDIO</small></div></div>
       <button class="new-button" @click="reset"><span>＋</span> 新建演示文稿</button>
       <div class="history-title">最近项目</div>
-      <button v-for="item in history" :key="item.id" class="history-item" :class="{active:item.id===project?.id}" @click="openProject(item)">
-        <span class="doc-icon">▤</span><span><b>{{ item.title }}</b><small>{{ item.slides.length }} 页 · {{ item.status==='COMPLETED'?'已完成':'草稿' }}</small></span>
-      </button>
+      <div v-for="item in history" :key="item.id" class="history-row">
+        <button class="history-item" :class="{active:item.id===project?.id}" @click="openProject(item)">
+          <span class="doc-icon">▤</span><span><b>{{ item.title }}</b><small>{{ item.slides.length }} 页 · {{ statusLabel(item.status) }}</small></span>
+        </button>
+        <button class="history-delete" :disabled="!!deletingId" :aria-label="`删除项目 ${item.title}`" title="删除项目" @click="deleteProject(item)">×</button>
+      </div>
       <div class="sidebar-foot"><span class="status-dot"></span> AgentScope 已就绪</div>
     </aside>
 
@@ -59,11 +66,12 @@ onMounted(loadHistory)
         </div><button class="add" @click="addSlide">＋ 添加一页</button>
       </section>
 
-      <section v-else-if="stage==='generating'" class="generating"><div class="orb"><span>{{ project!.progress }}%</span></div><h2>智能体正在并发创作</h2><p>内容智能体与设计智能体正在逐页工作，审校智能体会在交付前检查表达。</p><div class="progress"><i :style="{width:project!.progress+'%'}"></i></div><small>{{ project!.slides.filter(s=>s.generated).length }} / {{ project!.slides.length }} 页已完成</small></section>
+      <section v-else-if="stage==='generating'" class="generating"><div class="orb"><span>{{ project!.progress }}%</span></div><h2>智能体正在并发创作</h2><p>内容智能体与设计智能体正在逐页工作，审校智能体会在交付前检查表达。</p><div class="progress"><i :style="{width:project!.progress+'%'}"></i></div><small>{{ project!.slides.filter(s=>s.generated).length }} / {{ project!.slides.length }} 页已完成</small><button class="secondary stop-button" :disabled="busy" @click="cancelGeneration">{{ busy?'正在停止…':'停止生成' }}</button></section>
 
       <section v-else class="result workspace">
-        <div class="workspace-head"><div><div class="eyebrow"><span></span> DECK READY</div><h2>{{ project!.title }}</h2><p>{{ project!.slides.length }} 页内容已生成，下载后可在 PowerPoint 中自由编辑。</p></div><div class="actions"><button class="secondary" @click="project!.status='OUTLINE_READY'">返回大纲</button><button class="primary" :disabled="project!.status!=='COMPLETED'" @click="download">下载 PPTX ↓</button></div></div>
+        <div class="workspace-head"><div><div class="eyebrow"><span></span> {{ project!.status==='COMPLETED'?'DECK READY':'GENERATION STOPPED' }}</div><h2>{{ project!.title }}</h2><p>{{ project!.status==='COMPLETED'?`${project!.slides.length} 页内容已生成，下载后可在 PowerPoint 中自由编辑。`:'可以返回大纲修改内容并重新生成。' }}</p></div><div class="actions"><button class="secondary" @click="project!.status='OUTLINE_READY'">返回大纲</button><button class="primary" :disabled="project!.status!=='COMPLETED'" @click="download">下载 PPTX ↓</button></div></div>
         <div v-if="project!.status==='FAILED'" class="error">生成失败：{{ project!.errorMessage }}</div>
+        <div v-if="project!.status==='CANCELLED'" class="notice">已停止生成。已完成的页面会保留，重新生成时将从大纲开始。</div>
         <div class="deck-editor"><div class="thumbs"><button v-for="(s,i) in project!.slides" :key="i" :class="{active:i===activeSlide}" @click="activeSlide=i"><span>{{ i+1 }}</span><div><b>{{ s.title }}</b><small>{{ s.layout }}</small></div></button></div><div class="slide-canvas" :class="project!.slides[activeSlide].layout"><div class="page-no">{{ String(activeSlide+1).padStart(2,'0') }}</div><h3>{{ project!.slides[activeSlide].title }}</h3><i></i><h4>{{ project!.slides[activeSlide].subtitle }}</h4><ul><li v-for="line in (project!.slides[activeSlide].bullets||'').split('\n').filter(Boolean)" :key="line">{{ line }}</li></ul><small class="deck-name">{{ project!.title }}</small></div></div>
       </section>
       <div v-if="error" class="toast" @click="error=''">{{ error }} <span>×</span></div>

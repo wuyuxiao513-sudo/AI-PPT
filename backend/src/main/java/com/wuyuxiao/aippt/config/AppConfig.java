@@ -6,18 +6,17 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import java.util.concurrent.Executor;
 
 @Configuration
 public class AppConfig {
     @Bean("slideExecutor")
-    Executor slideExecutor(@Value("${app.generation.parallelism:4}") int size) {
+    ThreadPoolTaskExecutor slideExecutor(@Value("${app.generation.parallelism:4}") int size) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(size); executor.setMaxPoolSize(size); executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("slide-agent-"); executor.initialize(); return executor;
     }
     @Bean("generationExecutor")
-    Executor generationExecutor() {
+    ThreadPoolTaskExecutor generationExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(2); executor.setMaxPoolSize(2); executor.setQueueCapacity(20);
         executor.setThreadNamePrefix("presentation-"); executor.initialize(); return executor;

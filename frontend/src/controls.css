@@ -1,0 +1,10 @@
+.history-row{display:flex;align-items:center;border-radius:8px}
+.history-row:hover{background:#142443}
+.history-row .history-item{min-width:0;flex:1}
+.history-row .history-item b{max-width:125px}
+.history-delete{border:0;background:transparent;color:#8290a8;font-size:20px;width:34px;height:34px;border-radius:6px;margin-right:4px;flex:none}
+.history-delete:hover{background:#a73545;color:white}
+.history-delete:disabled{opacity:.4;cursor:not-allowed}
+.stop-button{margin-top:24px}
+.stop-button:disabled{opacity:.5;cursor:not-allowed}
+.notice{padding:12px;background:#eef2ff;color:#3948a1;border-radius:7px;margin-bottom:15px}

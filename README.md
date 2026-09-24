@@ -88,14 +88,16 @@ GENERATION_PARALLELISM=4
 | `POST` | `/api/presentations` | 提交主题、文本或文件并生成大纲 |
 | `PUT` | `/api/presentations/{id}/outline` | 保存修改后的大纲 |
 | `POST` | `/api/presentations/{id}/generate` | 异步并发生成页面 |
+| `POST` | `/api/presentations/{id}/cancel` | 停止正在生成的项目，保留已完成页面 |
 | `GET` | `/api/presentations/{id}` | 查询页面与进度 |
 | `GET` | `/api/presentations/{id}/download` | 下载原生 PPTX |
+| `DELETE` | `/api/presentations/{id}` | 删除项目；如果正在生成，先取消任务 |
 
 ## 教程：一次生成是怎样完成的
 
 1. `DocumentTextService` 使用 Tika 将上传文件转为纯文本，并限制扩展名和文本长度。
 2. `AgentScopePptService.plan` 创建策划智能体，输出结构化大纲；调用失败会安全回退到本地大纲。
-3. 用户在 Vue 页面调整大纲后，`PresentationService.generate` 将每页提交给有界线程池。
+3. 用户在 Vue 页面调整大纲后，`PresentationService.startGeneration` 将每页提交给有界线程池，并记录可取消的任务。
 4. 每个任务由内容智能体写初稿、审校智能体压缩并核对，再由设计智能体选择版式。
 5. 前端每秒读取项目状态，所有页面完成后开放下载。
 6. `PptxExportService` 使用 Apache POI 创建文本框、项目符号和几何形状，因此下载后可直接编辑。

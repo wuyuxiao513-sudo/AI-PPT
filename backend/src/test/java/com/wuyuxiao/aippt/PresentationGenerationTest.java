@@ -22,10 +22,8 @@ class PresentationGenerationTest {
         Presentation created = service.create("低碳旅行平台", "面向年轻人的低碳旅行平台，提供火车路线、绿色住宿与碳足迹记录。", 5);
         created.setStatus(Presentation.Status.GENERATING); // Simulate a task left by a previous process.
         repo.save(created);
-        assertThat(service.prepareGeneration(created.getId())).isTrue();
-        assertThat(service.prepareGeneration(created.getId())).isFalse();
-
-        service.generate(created.getId());
+        assertThat(service.startGeneration(created.getId())).isTrue();
+        assertThat(service.startGeneration(created.getId())).isFalse();
         Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
         Presentation current;
         do {
