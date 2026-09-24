@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Service
 public class PresentationService {
     private final PresentationRepository repo; private final AgentScopePptService agents; private final Executor executor;
+    private final Set<String> activeGenerations = ConcurrentHashMap.newKeySet();
     public PresentationService(PresentationRepository repo,AgentScopePptService agents,@Qualifier("slideExecutor") Executor executor){this.repo=repo;this.agents=agents;this.executor=executor;}
     @Transactional
     public Presentation create(String title,String source,int slideCount){
@@ -27,14 +28,37 @@ public class PresentationService {
         for(OutlineItem item:update.slides()){Slide s=new Slide();s.setPosition(i++);s.setTitle(item.title());s.setSubtitle(item.subtitle());s.setLayout(item.layout()==null?"content":item.layout());slides.add(s);}p.replaceSlides(slides);return repo.save(p);
     }
     public Presentation get(String id){return repo.findById(id).orElseThrow(()->new NoSuchElementException("项目不存在"));}
-    @Async
+    public boolean prepareGeneration(String id) {
+        if (!activeGenerations.add(id)) return false;
+        try {
+            Presentation p = get(id);
+            p.setStatus(Presentation.Status.GENERATING);
+            p.setProgress(0);
+            p.setErrorMessage(null);
+            repo.saveAndFlush(p);
+            return true;
+        } catch (RuntimeException e) {
+            activeGenerations.remove(id);
+            throw e;
+        }
+    }
+    public void failGeneration(String id, String message) {
+        try {
+            Presentation p = get(id);
+            p.setStatus(Presentation.Status.FAILED);
+            p.setErrorMessage(message);
+            repo.save(p);
+        } finally { activeGenerations.remove(id); }
+    }
+    @Async("generationExecutor")
     public void generate(String id){
-        Presentation p=get(id);p.setStatus(Presentation.Status.GENERATING);p.setProgress(1);repo.save(p);String session=id;AtomicInteger done=new AtomicInteger();int total=p.getSlides().size();
         try{
+            Presentation p=get(id);p.setProgress(1);repo.save(p);String session=id;AtomicInteger done=new AtomicInteger();int total=p.getSlides().size();
             List<CompletableFuture<Void>> tasks=p.getSlides().stream().map(slide->CompletableFuture.runAsync(()->{
                 var content=agents.write(slide,p.getSourceText(),session+"-"+slide.getPosition());slide.setSubtitle(content.subtitle());slide.setBullets(String.join("\n",content.bullets()));slide.setSpeakerNotes(content.speakerNotes());slide.setLayout(agents.chooseLayout(slide,session));slide.setGenerated(true);
                 synchronized(p){p.setProgress(Math.min(95,done.incrementAndGet()*95/total));repo.save(p);}
             },executor)).toList(); CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new)).join();p.setProgress(100);p.setStatus(Presentation.Status.COMPLETED);repo.save(p);
-        }catch(Exception e){p.setStatus(Presentation.Status.FAILED);p.setErrorMessage(e.getMessage());repo.save(p);}
+        }catch(Exception e){failGeneration(id,e.getMessage());}
+        finally{activeGenerations.remove(id);}
     }
 }

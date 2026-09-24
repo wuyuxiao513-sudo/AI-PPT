@@ -16,6 +16,12 @@ public class AppConfig {
         executor.setCorePoolSize(size); executor.setMaxPoolSize(size); executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("slide-agent-"); executor.initialize(); return executor;
     }
+    @Bean("generationExecutor")
+    Executor generationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2); executor.setMaxPoolSize(2); executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("presentation-"); executor.initialize(); return executor;
+    }
     @Bean
     WebMvcConfigurer cors() {
         return new WebMvcConfigurer() {
@@ -25,4 +31,3 @@ public class AppConfig {
         };
     }
 }
-
